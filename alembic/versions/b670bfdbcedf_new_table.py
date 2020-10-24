@@ -21,6 +21,7 @@ def upgrade():
     op.create_table(
         'url',
         sa.Column('id', sa.Integer, primary_key=True),
+        # sa.Column('date', sa.Date()),
         sa.Column('full_address', sa.String(255)),
         sa.Column('abbreviated_address', sa.String(255), unique=True),
         sa.Column('access_level', sa.String(10), default='general'),

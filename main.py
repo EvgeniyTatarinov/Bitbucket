@@ -7,15 +7,20 @@ from tornado_sqlalchemy import SQLAlchemy, SessionMixin
 
 from settings import COOKIE_SECRET, DATABASE_URL
 from shema import Url, User
-from auth import Authorization
+from dashboard import Authorization, short_generate
 
 
 class UrlApp(SessionMixin, RequestHandler):
     def set_default_headers(self):
         self.set_header("Content-Type", 'application/json; charset="utf-8"')
 
-    def get_current_user(self):
+    def get_current_user(self) -> bytes:
         return self.get_secure_cookie('user')
+
+    def _query_is_unique_short_link(self, short_link: str) -> bool:
+        return False if self.session.query(Url).filter_by(
+            abbreviated_address=short_link
+        ).count() != 0 else True
 
     def _query_urls_to_user(self, username: str) -> list:
         return self.session.query(Url).filter(
@@ -24,6 +29,43 @@ class UrlApp(SessionMixin, RequestHandler):
             ).one().id
         ).all()
 
+    def _query_get_url(self, url_id: int):
+        return self.session.query(Url).filter_by(
+            id=url_id
+        ).one()
+
+    def _query_add_url(self, full_url: str, short_url: str, level: str, user=None) -> int:
+        add_url = Url(
+            full_address=full_url,
+            abbreviated_address=short_url,
+            access_level=level,
+            user_id=user
+        )
+        self.session.add(add_url)
+        self.session.commit()
+        return add_url.id
+
+    def access_level(self, request_body: dict) -> tuple:
+        if 'access_level' in request_body and \
+                request_body['access_level'] in ['public', 'private', 'general']:
+            if self.get_current_user():
+                return request_body['access_level']
+            else:
+                return False, 'Authorization is required to change the access level'
+        return True, 'public'
+
+    def short_link(self, request_body: dict) -> tuple:
+        if 'short_link' in request_body:
+            if self._query_is_unique_short_link(request_body['short_link']):
+                return request_body['short_link']
+            else:
+                return False, 'a link exists'
+        else:
+            short = short_generate(request_body['url'])
+            while not self._query_is_unique_short_link(short):
+                short = short_generate(request_body['url'])
+            return True, short
+
     @authenticated
     def get(self):
         current_user = bytes.decode(self.get_current_user())
@@ -31,9 +73,51 @@ class UrlApp(SessionMixin, RequestHandler):
         if len(urls) == 0:
             self.set_status(204)
             self.finish({'status': self.get_status(), 'message': 'The Url list is empty'})
+        else:
+            self.set_status(200)
+            self.finish({
+                'status': self.get_status(),
+                'urls': [{
+                    'url': url.full_address,
+                    'short_url': url.abbreviated_address,
+                    'rating': url.rating
+                } for url in urls]
+            })
+
+    def post(self):
+        data = json_decode(self.request.body)
+        if 'url' not in data:
+            self.set_status(400)
+            self.finish({'status': self.get_status(), 'error': 'expected url in json post'})
+        else:
+            short_link = self.short_link(data)
+            access_level = self.access_level(data)
+            if short_link[0] and access_level[0]:
+                linc_id = self._query_add_url(
+                    data['url'],
+                    self.short_link(data)[1],
+                    self.access_level(data)[1],
+                    bytes.decode(self.get_current_user())
+                )
+                url = self._query_get_url(linc_id)
+                self.set_status(200)
+                self.finish({
+                    'status': self.get_status(),
+                    'id': linc_id,
+                    'short_url': url.abbreviated_address,
+                    'access_level': url.access_level
+                })
+            else:
+                self.set_status(400)
+                self.finish({'status': self.get_status(),
+                             'message': short_link[1] if not short_link[0] else access_level[1]
+                             })
 
 
 class RegistrationApp(SessionMixin, RequestHandler):
+
+    def set_default_headers(self):
+        self.set_header("Content-Type", 'application/json; charset="utf-8"')
 
     def _check_login_exists(self, login: str) -> bool:
         result = self.session.query(User).filter_by(username=login)
@@ -48,7 +132,6 @@ class RegistrationApp(SessionMixin, RequestHandler):
         return user.id
 
     def post(self):
-        self.set_header("Content-Type", "application/json")
         data = json_decode(self.request.body)
         if 'login' in data and 'password' in data:
             if self._check_login_exists(data['login']):
@@ -117,7 +200,7 @@ class AuthorizationApp(SessionMixin, RequestHandler):
 class App(Application):
     def __init__(self):
         handlers = [
-            (r"/", UrlApp),
+            (r"/urls", UrlApp),
             (r"/registration", RegistrationApp),
             (r"/login", AuthorizationApp)
         ]

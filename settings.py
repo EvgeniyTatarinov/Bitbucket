@@ -2,5 +2,6 @@
 COOKIE_SECRET = 'kdgjJVgkaBJhdmnxvnBVgkdksnVDJCakGTKHb85xvbllz987s2vkDHfklDLRGKkdjc'
 DATABASE_URL = 'postgres://admin:admin@127.0.0.1:5432/bitbucket'
 TOKEN_LIFETIME = 500
-
-# jwt_handler = JWTToken()
+LINK_LENGTH = 8
+ADDRESS = '127.0.0.1'
+PORT = 8008

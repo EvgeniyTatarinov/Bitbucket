@@ -4,8 +4,8 @@ from hashlib import sha256 as hashfunction
 from settings import LINK_LENGTH
 
 
-def short_generate(url):
-    return hashfunction(url).hexdigest()[:LINK_LENGTH]
+async def short_generate(url):
+    return hashfunction(url.encode()).hexdigest()[:LINK_LENGTH]
 
 
 def hash_function(login: str, password: str) -> str:

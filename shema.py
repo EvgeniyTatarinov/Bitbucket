@@ -21,7 +21,7 @@ class User(db.Model):
 class Url(db.Model):
     __tablename__ = 'url'
     id = Column(BigInteger, primary_key=True, autoincrement=True)
-    # date = Column(DateTime(timezone=True), server_default=func.now())
+    datetime = Column(DateTime(timezone=True), server_default=func.now())
     full_address = Column(String(255))
     abbreviated_address = Column(String(255), unique=True)
     access_level = Column(String(10), default='general')

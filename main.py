@@ -137,7 +137,6 @@ class UrlsApp(SessionMixin, RequestHandler):
         current_user = bytes.decode(self.get_current_user())
         urls = await self._query_urls_to_user(current_user)
         if len(urls) == 0:
-            self.set_status(204)
             self.write({
                 'status': self.get_status(),
                 'message': 'The Url list is empty'
@@ -147,6 +146,7 @@ class UrlsApp(SessionMixin, RequestHandler):
             self.write({
                 'status': self.get_status(),
                 'urls': [{
+                    'datetime': str(url.datetime),
                     'url': url.full_address,
                     'short_url': f'http://{ADDRESS}:{PORT}/'
                                  f'?url={url.abbreviated_address}',
@@ -163,6 +163,9 @@ class UrlsApp(SessionMixin, RequestHandler):
                 'error': 'expected url in json post'
             })
         else:
+            full_url = data['url']
+            if 'http://' or 'https://' not in full_url:
+                full_url = f'http://{full_url}'
             short_link = await self.short_link(data)
             access_level = self.access_level(data)
             user_id = await self._query_get_id_to_username(
@@ -170,7 +173,7 @@ class UrlsApp(SessionMixin, RequestHandler):
             )
             if short_link[0] and access_level[0]:
                 linc_id = await self._query_add_url(
-                    data['url'],
+                    full_url,
                     short_link[1],
                     access_level[1],
                     user_id
@@ -256,7 +259,11 @@ class AuthorizationApp(SessionMixin, RequestHandler):
             username = bytes.decode(current_user)
             user_id = await self._query_one_user_id(User.username == username)
             self.set_status(200)
-            self.write({'status': self.get_status(), 'message': user_id})
+            self.write({
+                'status': self.get_status(),
+                'user_id': user_id,
+                'username': username
+            })
 
     async def post(self):
         basic_data = self.request.headers.get('Authorization')
@@ -298,7 +305,10 @@ class App(Application):
 
 
 if __name__ == "__main__":
-    parse_command_line()
-    AsyncIOMainLoop().install()
-    HTTPServer(App()).listen(port=PORT, address=ADDRESS)
-    get_event_loop().run_forever()
+    try:
+        parse_command_line()
+        AsyncIOMainLoop().install()
+        HTTPServer(App()).listen(port=PORT, address=ADDRESS)
+        get_event_loop().run_forever()
+    except KeyboardInterrupt:
+        print('By!')

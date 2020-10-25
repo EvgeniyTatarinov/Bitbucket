@@ -9,9 +9,15 @@
     - grant all privileges on database bitbucket to [DATABASE_USERNAME];
     - Specify database settings in the file settings.py
     
-3. Install packages from a file requirements.txt
-4. To perform the migration
-    - alembic revision -m "create bitbucket table"
+3. #### Install packages from a file requirements.txt
+    - pip3 install -r requirements.txt
+
+4. #### To perform the migration
+    - If there is no alembic folder in the project, you must install alembic with the command: "alembic init alembic"
+        - In the alembic.ini file, change the parameter: sqlalchemy. url, specifying the necessary database settings
+        - alembic revision -m "[unique_migration_name]"
     - alembic upgrade head
+    
+5. #### To start the project, run: python3 main.py
     
     

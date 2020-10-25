@@ -1,0 +1,200 @@
+{
+	"info": {
+		"_postman_id": "e8f89575-f4bb-49dd-9054-c5b32d633b14",
+		"name": "bitbucket",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "Регистрация / Авторизация",
+			"item": [
+				{
+					"name": "Authorization Basic Auth",
+					"request": {
+						"auth": {
+							"type": "basic",
+							"basic": [
+								{
+									"key": "username",
+									"value": "admin",
+									"type": "string"
+								},
+								{
+									"key": "password",
+									"value": "123456",
+									"type": "string"
+								}
+							]
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"name": "Content-Type",
+								"type": "text",
+								"value": "application/json"
+							}
+						],
+						"url": {
+							"raw": "127.0.0.1:8008/login",
+							"host": [
+								"127",
+								"0",
+								"0",
+								"1"
+							],
+							"port": "8008",
+							"path": [
+								"login"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "Registration",
+					"request": {
+						"auth": {
+							"type": "noauth"
+						},
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"name": "Content-Type",
+								"type": "text",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n\t\"login\": \"admin\",\n\t\"password\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "127.0.0.1:8008/registration",
+							"host": [
+								"127",
+								"0",
+								"0",
+								"1"
+							],
+							"port": "8008",
+							"path": [
+								"registration"
+							]
+						},
+						"description": "Авторизация пользоваеля (Basic Auth) to Base64"
+					},
+					"response": []
+				},
+				{
+					"name": "Get user",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"name": "Content-Type",
+								"type": "text",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "127.0.0.1:8008/login",
+							"host": [
+								"127",
+								"0",
+								"0",
+								"1"
+							],
+							"port": "8008",
+							"path": [
+								"login"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		},
+		{
+			"name": "Ссылки",
+			"item": [
+				{
+					"name": "127.0.0.1:5000/urls",
+					"protocolProfileBehavior": {
+						"disableBodyPruning": true
+					},
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Content-Type",
+								"name": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": ""
+						},
+						"url": {
+							"raw": "127.0.0.1:8008/urls",
+							"host": [
+								"127",
+								"0",
+								"0",
+								"1"
+							],
+							"port": "8008",
+							"path": [
+								"urls"
+							]
+						}
+					},
+					"response": []
+				},
+				{
+					"name": "127.0.0.1:8080/urls",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"name": "Content-Type",
+								"value": "application/json",
+								"type": "text"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n  \"url\": \"https://google.com\",\n  \"short_link\": \"google\",\n  \"access_level\": \"public\"\n}"
+						},
+						"url": {
+							"raw": "127.0.0.1:8008/urls",
+							"host": [
+								"127",
+								"0",
+								"0",
+								"1"
+							],
+							"port": "8008",
+							"path": [
+								"urls"
+							]
+						}
+					},
+					"response": []
+				}
+			]
+		}
+	]
+}

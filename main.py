@@ -5,14 +5,60 @@ from tornado.options import parse_command_line
 from tornado.httpserver import HTTPServer
 from tornado_sqlalchemy import SQLAlchemy, SessionMixin
 
-from settings import COOKIE_SECRET, DATABASE_URL
+from settings import COOKIE_SECRET, DATABASE_URL, PORT, ADDRESS
 from shema import Url, User
-from dashboard import Authorization, short_generate
+from dashboard import short_generate, hash_function, base_authorization
 
 
-class UrlApp(SessionMixin, RequestHandler):
-    def set_default_headers(self):
-        self.set_header("Content-Type", 'application/json; charset="utf-8"')
+class ShowUrl(SessionMixin, RequestHandler):
+    def get_current_user(self) -> bytes:
+        return self.get_secure_cookie('user')
+
+    def _query_up_rating_url(self, url_id) -> None:
+        self.session.query(Url).filter(Url.id == url_id).update(
+            {'rating': Url.rating + 1}
+        )
+
+    def _query_get_url_to_short_url(self, short_url: str):
+        url = self.session.query(Url).filter_by(
+            abbreviated_address=short_url
+        )
+        return url.one()
+
+    def _query_get_id_to_username(self, username: str) -> int:
+        user_id = self.session.query(User).filter_by(username=username)
+        return user_id.one().id
+
+    @authenticated
+    def get_authorization(self, url):
+        if url.access_level == 'general':
+            self.redirect(url.full_address, status=303)
+        elif url.access_level == 'private':
+            if url.user_id == self._query_get_id_to_username(
+                bytes.decode(self.get_current_user())
+            ):
+                self._query_up_rating_url(url.id)
+                self.redirect(url.full_address, status=303)
+            else:
+                self.set_status(403)
+                self.finish({'status': self.get_status(),
+                             'error': 'no authorization rights'})
+
+    def get(self):
+        if 'url' in self.request.arguments:
+            url = self._query_get_url_to_short_url(self.get_argument('url'))
+            if url.access_level == 'public':
+                self._query_up_rating_url(url.id)
+                self.redirect(url.full_address, status=303)
+            else:
+                self.get_authorization(url)
+        else:
+            self.set_status(400)
+            self.finish({'status': self.get_status(),
+                         'error': 'no request parameter'})
+
+
+class UrlsApp(SessionMixin, RequestHandler):
 
     def get_current_user(self) -> bytes:
         return self.get_secure_cookie('user')
@@ -34,7 +80,8 @@ class UrlApp(SessionMixin, RequestHandler):
             id=url_id
         ).one()
 
-    def _query_add_url(self, full_url: str, short_url: str, level: str, user=None) -> int:
+    def _query_add_url(self, full_url: str, short_url: str,
+                       level: str, user=None) -> int:
         add_url = Url(
             full_address=full_url,
             abbreviated_address=short_url,
@@ -47,11 +94,13 @@ class UrlApp(SessionMixin, RequestHandler):
 
     def access_level(self, request_body: dict) -> tuple:
         if 'access_level' in request_body and \
-                request_body['access_level'] in ['public', 'private', 'general']:
+                request_body['access_level'] in \
+                ['public', 'private', 'general']:
             if self.get_current_user():
                 return request_body['access_level']
             else:
-                return False, 'Authorization is required to change the access level'
+                return False, \
+                       'Authorization is required to change the access level'
         return True, 'public'
 
     def short_link(self, request_body: dict) -> tuple:
@@ -72,14 +121,18 @@ class UrlApp(SessionMixin, RequestHandler):
         urls = self._query_urls_to_user(current_user)
         if len(urls) == 0:
             self.set_status(204)
-            self.finish({'status': self.get_status(), 'message': 'The Url list is empty'})
+            self.finish({
+                'status': self.get_status(),
+                'message': 'The Url list is empty'
+            })
         else:
             self.set_status(200)
             self.finish({
                 'status': self.get_status(),
                 'urls': [{
                     'url': url.full_address,
-                    'short_url': url.abbreviated_address,
+                    'short_url': f'http://{ADDRESS}:{PORT}/'
+                                 f'?url={url.abbreviated_address}',
                     'rating': url.rating
                 } for url in urls]
             })
@@ -88,7 +141,10 @@ class UrlApp(SessionMixin, RequestHandler):
         data = json_decode(self.request.body)
         if 'url' not in data:
             self.set_status(400)
-            self.finish({'status': self.get_status(), 'error': 'expected url in json post'})
+            self.finish({
+                'status': self.get_status(),
+                'error': 'expected url in json post'
+            })
         else:
             short_link = self.short_link(data)
             access_level = self.access_level(data)
@@ -110,7 +166,8 @@ class UrlApp(SessionMixin, RequestHandler):
             else:
                 self.set_status(400)
                 self.finish({'status': self.get_status(),
-                             'message': short_link[1] if not short_link[0] else access_level[1]
+                             'message': short_link[1] if not short_link[0]
+                             else access_level[1]
                              })
 
 
@@ -135,7 +192,7 @@ class RegistrationApp(SessionMixin, RequestHandler):
         data = json_decode(self.request.body)
         if 'login' in data and 'password' in data:
             if self._check_login_exists(data['login']):
-                hash_password = Authorization().hash_function(
+                hash_password = hash_function(
                     data['login'], data['password']
                 )
                 request_user_id = self._create_user(
@@ -148,14 +205,15 @@ class RegistrationApp(SessionMixin, RequestHandler):
                 )
             else:
                 self.set_status(400)
-                self.finish({'status': self.get_status(), 'error': 'login busy'})
+                self.finish({'status': self.get_status(),
+                             'error': 'login busy'})
         else:
             self.set_status(400)
-            self.finish({'status': self.get_status(), 'error': 'request failed'})
+            self.finish({'status': self.get_status(),
+                         'error': 'request failed'})
 
 
 class AuthorizationApp(SessionMixin, RequestHandler):
-    auth = Authorization()
 
     def get_current_user(self):
         return self.get_secure_cookie('user')
@@ -171,7 +229,8 @@ class AuthorizationApp(SessionMixin, RequestHandler):
         if not current_user:
             self.set_status(401)
             self.finish(
-                {'status': self.get_status(), 'id': 'Not Authorization'}
+                {'status': self.get_status(),
+                 'id': 'Not Authorization'}
             )
         else:
             username = bytes.decode(current_user)
@@ -181,10 +240,14 @@ class AuthorizationApp(SessionMixin, RequestHandler):
 
     def post(self):
         basic_data = self.request.headers.get('Authorization')
-        users_data = self.auth.base_auth(basic_data)
-        hash_password = self.auth.hash_function(users_data['login'], users_data['password'])
+        users_data = base_authorization(basic_data)
+        hash_password = hash_function(
+            users_data['login'],
+            users_data['password']
+        )
         user_id = self._query_one_user_id(
-            User.username == users_data['login'], User.password == hash_password
+            User.username == users_data['login'],
+            User.password == hash_password
         )
         if user_id:
             self.set_secure_cookie("user", users_data['login'])
@@ -194,13 +257,15 @@ class AuthorizationApp(SessionMixin, RequestHandler):
             )
         else:
             self.set_status(400)
-            self.finish({'status': self.get_status(), 'error': 'Invalid login or password'})
+            self.finish({'status': self.get_status(),
+                         'error': 'Invalid login or password'})
 
 
 class App(Application):
     def __init__(self):
         handlers = [
-            (r"/urls", UrlApp),
+            (r"/", ShowUrl),
+            (r"/urls", UrlsApp),
             (r"/registration", RegistrationApp),
             (r"/login", AuthorizationApp)
         ]
@@ -215,5 +280,6 @@ class App(Application):
 if __name__ == "__main__":
     parse_command_line()
     http_server = HTTPServer(App())
-    http_server.listen(8008)
+    http_server.bind(port=PORT, address=ADDRESS)
+    http_server.start(0)
     IOLoop.instance().start()

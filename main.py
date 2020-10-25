@@ -1,9 +1,12 @@
+from asyncio import get_event_loop
+
 from tornado.ioloop import IOLoop
+from tornado.platform.asyncio import AsyncIOMainLoop
 from tornado.web import Application, RequestHandler, authenticated
 from tornado.escape import json_decode
 from tornado.options import parse_command_line
 from tornado.httpserver import HTTPServer
-from tornado_sqlalchemy import SQLAlchemy, SessionMixin
+from tornado_sqlalchemy import SQLAlchemy, SessionMixin, as_future
 
 from settings import COOKIE_SECRET, DATABASE_URL, PORT, ADDRESS
 from shema import Url, User
@@ -68,12 +71,16 @@ class UrlsApp(SessionMixin, RequestHandler):
             abbreviated_address=short_link
         ).count() != 0 else True
 
-    def _query_urls_to_user(self, username: str) -> list:
-        return self.session.query(Url).filter(
+    def _query_get_id_to_username(self, username: str) -> int:
+        user_id = self.session.query(User).filter_by(username=username)
+        return user_id.one().id
+
+    async def _query_urls_to_user(self, username: str) -> list:
+        return await as_future(self.session.query(Url).filter(
             Url.user_id == self.session.query(User).filter(
                 User.username == username
             ).one().id
-        ).all()
+        ).all)
 
     def _query_get_url(self, url_id: int):
         return self.session.query(Url).filter_by(
@@ -97,7 +104,7 @@ class UrlsApp(SessionMixin, RequestHandler):
                 request_body['access_level'] in \
                 ['public', 'private', 'general']:
             if self.get_current_user():
-                return request_body['access_level']
+                return True, request_body['access_level']
             else:
                 return False, \
                        'Authorization is required to change the access level'
@@ -106,7 +113,7 @@ class UrlsApp(SessionMixin, RequestHandler):
     def short_link(self, request_body: dict) -> tuple:
         if 'short_link' in request_body:
             if self._query_is_unique_short_link(request_body['short_link']):
-                return request_body['short_link']
+                return True, request_body['short_link']
             else:
                 return False, 'a link exists'
         else:
@@ -116,18 +123,18 @@ class UrlsApp(SessionMixin, RequestHandler):
             return True, short
 
     @authenticated
-    def get(self):
+    async def get(self):
         current_user = bytes.decode(self.get_current_user())
-        urls = self._query_urls_to_user(current_user)
+        urls = await self._query_urls_to_user(current_user)
         if len(urls) == 0:
             self.set_status(204)
-            self.finish({
+            self.write({
                 'status': self.get_status(),
                 'message': 'The Url list is empty'
             })
         else:
             self.set_status(200)
-            self.finish({
+            self.write({
                 'status': self.get_status(),
                 'urls': [{
                     'url': url.full_address,
@@ -141,23 +148,26 @@ class UrlsApp(SessionMixin, RequestHandler):
         data = json_decode(self.request.body)
         if 'url' not in data:
             self.set_status(400)
-            self.finish({
+            self.write({
                 'status': self.get_status(),
                 'error': 'expected url in json post'
             })
         else:
             short_link = self.short_link(data)
             access_level = self.access_level(data)
+            user_id = self._query_get_id_to_username(
+                bytes.decode(self.get_current_user())
+            )
             if short_link[0] and access_level[0]:
                 linc_id = self._query_add_url(
                     data['url'],
-                    self.short_link(data)[1],
-                    self.access_level(data)[1],
-                    bytes.decode(self.get_current_user())
+                    short_link[1],
+                    access_level[1],
+                    user_id
                 )
                 url = self._query_get_url(linc_id)
                 self.set_status(200)
-                self.finish({
+                self.write({
                     'status': self.get_status(),
                     'id': linc_id,
                     'short_url': url.abbreviated_address,
@@ -165,7 +175,7 @@ class UrlsApp(SessionMixin, RequestHandler):
                 })
             else:
                 self.set_status(400)
-                self.finish({'status': self.get_status(),
+                self.write({'status': self.get_status(),
                              'message': short_link[1] if not short_link[0]
                              else access_level[1]
                              })
@@ -279,7 +289,14 @@ class App(Application):
 
 if __name__ == "__main__":
     parse_command_line()
-    http_server = HTTPServer(App())
-    http_server.bind(port=PORT, address=ADDRESS)
-    http_server.start(0)
-    IOLoop.instance().start()
+    AsyncIOMainLoop().install()
+    HTTPServer(App()).listen(port=PORT, address=ADDRESS)
+    get_event_loop().run_forever()
+
+
+
+
+    # http_server = HTTPServer(App())
+    # http_server.bind(port=PORT, address=ADDRESS)
+    # http_server.start(0)
+    # IOLoop.instance().start()
